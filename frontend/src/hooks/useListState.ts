@@ -14,7 +14,7 @@ function loadState(): ListState {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw) as ListState;
   } catch {
-    // ignore
+    sessionStorage.removeItem(STORAGE_KEY);
   }
   return { params: { page: 1, order: "created_at_desc" }, displayMode: "medium" };
 }

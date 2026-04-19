@@ -312,6 +312,9 @@ def photo_thumbnail(request, pk: int):
         if not photo:
             return _error("写真が見つかりません", 404)
         return HttpResponse(photo.thumbnail_data, content_type="image/jpeg")
+    except Exception:
+        logger.exception("%s %s", request.method, request.path)
+        return _error("サーバーエラーが発生しました", 500)
     finally:
         db.close()
 

@@ -37,7 +37,7 @@ export default function RestaurantCard({ restaurant: r, displayMode, isAdmin, on
         <td className="px-4 py-2 text-sm text-gray-500">{r.visit_date ?? "-"}</td>
         {isAdmin && (
           <td className="px-4 py-2">
-            <button onClick={handleDelete} className="text-red-500 hover:text-red-700 text-sm">
+            <button type="button" onClick={handleDelete} className="text-red-500 hover:text-red-700 text-sm">
               削除
             </button>
           </td>
@@ -78,7 +78,7 @@ export default function RestaurantCard({ restaurant: r, displayMode, isAdmin, on
         )}
         {isAdmin && (
           <div className="flex justify-end">
-            <button onClick={handleDelete} className="text-red-500 hover:text-red-700 text-xs">
+            <button type="button" onClick={handleDelete} className="text-red-500 hover:text-red-700 text-xs">
               削除
             </button>
           </div>

@@ -113,17 +113,19 @@ export default function ListPage({ isAdmin, onLogout, onLogin }: Props) {
             {isAdmin ? (
               <>
                 <button
+                  type="button"
                   onClick={() => navigate("/restaurants/new")}
                   className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
                 >
                   + 新規登録
                 </button>
-                <button onClick={onLogout} className="text-sm text-gray-500 hover:text-gray-700">
+                <button type="button" onClick={onLogout} className="text-sm text-gray-500 hover:text-gray-700">
                   管理者終了
                 </button>
               </>
             ) : (
               <button
+                type="button"
                 onClick={() => setShowLogin(true)}
                 className="px-3 py-1.5 border border-amber-600 text-amber-600 rounded-lg text-sm hover:bg-amber-50"
               >
@@ -173,6 +175,7 @@ export default function ListPage({ isAdmin, onLogout, onLogin }: Props) {
             {DISPLAY_MODES.map((mode) => (
               <button
                 key={mode}
+                type="button"
                 onClick={() => update({ displayMode: mode })}
                 className={`px-3 py-1 text-sm ${state.displayMode === mode ? "bg-amber-600 text-white" : "hover:bg-gray-100"}`}
               >
@@ -264,6 +267,7 @@ export default function ListPage({ isAdmin, onLogout, onLogin }: Props) {
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
               <button
                 key={p}
+                type="button"
                 onClick={() => update({ params: { ...state.params, page: p } })}
                 className={`w-8 h-8 rounded-lg text-sm ${
                   (state.params.page ?? 1) === p

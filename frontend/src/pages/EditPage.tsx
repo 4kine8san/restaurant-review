@@ -4,6 +4,7 @@ import { getRestaurant, createRestaurant, updateRestaurant } from "../api/restau
 import { listMasters } from "../api/masters";
 import type { RestaurantFormData, Master, PhotoMeta } from "../types";
 import { SCENES, RATING_OPTIONS, STAR_OPTIONS } from "../constants";
+import DateInput from "../components/DateInput";
 import PhotoManager from "../components/PhotoManager";
 
 const EMPTY_FORM: RestaurantFormData = {
@@ -100,6 +101,22 @@ export default function EditPage() {
   const set = (key: keyof RestaurantFormData, value: unknown) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
+  // 料理／サービス／雰囲気／CP／酒・ドリンクの平均を総合評価に自動反映
+  useEffect(() => {
+    const subs = [
+      form.rating_food,
+      form.rating_service,
+      form.rating_atmosphere,
+      form.rating_cost_performance,
+      form.rating_drinks,
+    ].filter((v): v is number => v !== null);
+    const overall =
+      subs.length > 0
+        ? Math.round((subs.reduce((a, b) => a + b, 0) / subs.length) * 10) / 10
+        : null;
+    setForm((prev) => ({ ...prev, rating_overall: overall }));
+  }, [form.rating_food, form.rating_service, form.rating_atmosphere, form.rating_cost_performance, form.rating_drinks]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) {
@@ -190,12 +207,9 @@ export default function EditPage() {
               />
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">訪問年月日</label>
-                <input
-                  type="text"
+                <DateInput
                   value={form.visit_date}
-                  onChange={(e) => set("visit_date", e.target.value)}
-                  placeholder="例: 2026-04"
-                  maxLength={20}
+                  onChange={(v) => set("visit_date", v)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm"
                 />
               </div>
@@ -211,12 +225,15 @@ export default function EditPage() {
                 onChange={(v) => set("stars", v ? Number(v) : null)}
                 options={starOptions}
               />
-              <SelectField
-                label="総合評価"
-                value={form.rating_overall}
-                onChange={(v) => set("rating_overall", v ? Number(v) : null)}
-                options={ratingOptions}
-              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  総合評価
+                  <span className="ml-1 text-xs text-gray-400 font-normal">自動計算</span>
+                </label>
+                <div className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-sm text-gray-500">
+                  {form.rating_overall !== null ? form.rating_overall.toFixed(1) : "-"}
+                </div>
+              </div>
               <SelectField
                 label="料理"
                 value={form.rating_food}

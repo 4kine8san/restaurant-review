@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { PhotoMeta } from "../types";
 import {
   uploadPhoto,
@@ -21,7 +22,14 @@ export default function PhotoManager({ restaurantId, photos, onChange }: Props) 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState("");
-  const [isDragging, setIsDragging] = useState(false);
+  const [isFileDragging, setIsFileDragging] = useState(false);
+
+  // 写真並び替えドラッグ用の状態
+  const [sortDragIndex, setSortDragIndex] = useState<number | null>(null);
+  const [sortDragOver, setSortDragOver] = useState<number | null>(null);
+  const isSortingRef = useRef(false); // ファイルドロップゾーンとの区別用
+
+  // ---- アップロード ----
 
   const uploadFiles = async (files: File[]) => {
     const images = files.filter((f) => f.type.startsWith("image/"));
@@ -56,20 +64,23 @@ export default function PhotoManager({ restaurantId, photos, onChange }: Props) 
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  // ドロップゾーンへのファイルドラッグ（写真並び替えドラッグ中は無視）
+  const handleZoneDragOver = (e: React.DragEvent) => {
+    if (isSortingRef.current) return;
     e.preventDefault();
-    setIsDragging(true);
+    setIsFileDragging(true);
   };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragging(false);
+  const handleZoneDragLeave = (e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsFileDragging(false);
   };
-
-  const handleDrop = async (e: React.DragEvent) => {
+  const handleZoneDrop = async (e: React.DragEvent) => {
+    if (isSortingRef.current) return;
     e.preventDefault();
-    setIsDragging(false);
+    setIsFileDragging(false);
     await uploadFiles(Array.from(e.dataTransfer.files));
   };
+
+  // ---- 写真操作 ----
 
   const handleRotate = async (photo: PhotoMeta) => {
     try {
@@ -106,15 +117,55 @@ export default function PhotoManager({ restaurantId, photos, onChange }: Props) 
     }
   };
 
+  // ---- 写真並び替えドラッグ ----
+
+  const onSortDragStart = (e: React.DragEvent, index: number) => {
+    isSortingRef.current = true;
+    setSortDragIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const onSortDragOver = (e: React.DragEvent, index: number) => {
+    if (!isSortingRef.current) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setSortDragOver(index);
+  };
+
+  const onSortDrop = async (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    if (sortDragIndex === null || sortDragIndex === targetIndex) return;
+    const updated = [...photos];
+    const [moved] = updated.splice(sortDragIndex, 1);
+    updated.splice(targetIndex, 0, moved);
+    const reordered = updated.map((p, i) => ({ ...p, sort_order: i }));
+    onChange(reordered);
+    setSortDragIndex(null);
+    setSortDragOver(null);
+    isSortingRef.current = false;
+    try {
+      await reorderPhotos(reordered.map((p) => p.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "並び替えに失敗しました");
+    }
+  };
+
+  const onSortDragEnd = () => {
+    isSortingRef.current = false;
+    setSortDragIndex(null);
+    setSortDragOver(null);
+  };
+
   return (
     <div className="space-y-4">
+      {/* アップロードゾーン */}
       <div
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+        onDragOver={handleZoneDragOver}
+        onDragLeave={handleZoneDragLeave}
+        onDrop={handleZoneDrop}
         onClick={() => !loading && fileRef.current?.click()}
         className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center gap-2 cursor-pointer transition-colors
-          ${isDragging ? "border-amber-500 bg-amber-50" : "border-gray-300 bg-gray-50 hover:border-amber-400 hover:bg-amber-50/50"}
+          ${isFileDragging ? "border-amber-500 bg-amber-50" : "border-gray-300 bg-gray-50 hover:border-amber-400 hover:bg-amber-50/50"}
           ${loading ? "cursor-not-allowed opacity-60" : ""}`}
       >
         <span className="text-3xl">📷</span>
@@ -142,74 +193,95 @@ export default function PhotoManager({ restaurantId, photos, onChange }: Props) 
 
       {error && <p className="text-red-500 text-sm">{error}</p>}
 
+      {photos.length > 0 && (
+        <p className="text-xs text-gray-400">ドラッグで並び替えできます</p>
+      )}
+
+      {/* 写真グリッド */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        {photos.map((photo, i) => (
-          <div
-            key={photo.id}
-            className="relative group border rounded-lg overflow-hidden bg-gray-50"
-          >
-            <img
-              src={thumbUrl(photo.id)}
-              alt={`写真${i + 1}`}
-              className="w-full aspect-square object-cover cursor-pointer"
-              onClick={() => setPreview(photo.id)}
-            />
-            {i === 0 && (
-              <span className="absolute top-1 left-1 bg-amber-600 text-white text-xs px-1.5 py-0.5 rounded">
-                表紙
-              </span>
-            )}
-            <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white p-1 flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button
-                type="button"
-                onClick={() => movePhoto(i, -1)}
-                className="p-1 hover:text-amber-300"
-                title="前へ"
-              >
-                ◀
-              </button>
-              <button
-                type="button"
-                onClick={() => handleRotate(photo)}
-                className="p-1 hover:text-amber-300"
-                title="回転"
-              >
-                ↻
-              </button>
-              <button
-                type="button"
-                onClick={() => movePhoto(i, 1)}
-                className="p-1 hover:text-amber-300"
-                title="後へ"
-              >
-                ▶
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDelete(photo)}
-                className="p-1 hover:text-red-400"
-                title="削除"
-              >
-                ✕
-              </button>
+        {photos.map((photo, i) => {
+          const isDraggingThis = sortDragIndex === i;
+          const isDropTarget = sortDragOver === i && sortDragIndex !== i;
+          return (
+            <div
+              key={photo.id}
+              draggable
+              onDragStart={(e) => onSortDragStart(e, i)}
+              onDragOver={(e) => onSortDragOver(e, i)}
+              onDrop={(e) => onSortDrop(e, i)}
+              onDragEnd={onSortDragEnd}
+              className={[
+                "relative group border rounded-lg overflow-hidden bg-gray-50 cursor-grab active:cursor-grabbing transition-all",
+                isDraggingThis ? "opacity-40 scale-95" : "",
+                isDropTarget ? "ring-2 ring-amber-500 scale-105" : "",
+              ].filter(Boolean).join(" ")}
+            >
+              <img
+                src={thumbUrl(photo.id)}
+                alt={`写真${i + 1}`}
+                className="w-full aspect-square object-cover"
+                onClick={() => !isSortingRef.current && setPreview(photo.id)}
+                draggable={false}
+              />
+              {i === 0 && (
+                <span className="absolute top-1 left-1 bg-amber-600 text-white text-xs px-1.5 py-0.5 rounded">
+                  表紙
+                </span>
+              )}
+              <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white p-1 flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  type="button"
+                  onClick={() => movePhoto(i, -1)}
+                  className="p-1 hover:text-amber-300"
+                  title="前へ"
+                >
+                  ◀
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRotate(photo)}
+                  className="p-1 hover:text-amber-300"
+                  title="回転"
+                >
+                  ↻
+                </button>
+                <button
+                  type="button"
+                  onClick={() => movePhoto(i, 1)}
+                  className="p-1 hover:text-amber-300"
+                  title="後へ"
+                >
+                  ▶
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(photo)}
+                  className="p-1 hover:text-red-400"
+                  title="削除"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {preview !== null && (
-        <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
-          onClick={() => setPreview(null)}
-        >
-          <img
-            src={photoUrl(preview)}
-            alt="原寸表示"
-            className="max-h-[90vh] max-w-[90vw] object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
-      )}
+      {preview !== null &&
+        createPortal(
+          <div
+            className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
+            onClick={() => setPreview(null)}
+          >
+            <img
+              src={photoUrl(preview)}
+              alt="原寸表示"
+              className="max-h-[90vh] max-w-[90vw] object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

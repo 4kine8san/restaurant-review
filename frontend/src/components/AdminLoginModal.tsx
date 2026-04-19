@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 
 interface Props {
   onLogin: (password: string) => Promise<boolean>;
@@ -20,7 +21,7 @@ export default function AdminLoginModal({ onLogin, onClose }: Props) {
     else onClose();
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-sm">
         <h2 className="text-xl font-bold mb-6 text-gray-800">管理者ログイン</h2>
@@ -55,6 +56,7 @@ export default function AdminLoginModal({ onLogin, onClose }: Props) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
