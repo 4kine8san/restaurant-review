@@ -57,7 +57,7 @@ function SelectField({
 
 export default function EditPage() {
   const { id } = useParams<{ id: string }>();
-  const isNew = id === "new";
+  const isNew = !id || id === "new";
   const navigate = useNavigate();
 
   const [form, setForm] = useState<RestaurantFormData>(EMPTY_FORM);

@@ -1,4 +1,4 @@
-import os
+﻿import os
 import io
 import csv
 import json
@@ -25,8 +25,11 @@ def _get_db():
     return SessionLocal()
 
 
-def _error(message: str, status: int = 400):
-    return JsonResponse({"error": message}, status=status)
+def _error(message: str, status: int = 400, details: dict | None = None):
+    body = {"error": message}
+    if details:
+        body["details"] = details
+    return JsonResponse(body, status=status)
 
 
 def _to_rgb(img: Image.Image) -> Image.Image:
@@ -121,8 +124,10 @@ def restaurant_list(request):
         # POST
         try:
             data = RestaurantCreate.model_validate_json(request.body)
-        except ValidationError:
-            return _error("入力値が不正です")
+        except ValidationError as e:
+            details = {str(err["loc"][-1]): err["msg"] for err in e.errors()}
+            logger.warning("validation error: POST %s body=%r details=%s", request.path, request.body[:500], details)
+            return _error("入力値が不正です", details=details)
 
         restaurant = Restaurant(**data.model_dump())
         db.add(restaurant)
@@ -130,7 +135,7 @@ def restaurant_list(request):
         db.refresh(restaurant)
         return JsonResponse(_serialize_restaurant(restaurant), status=201)
     except Exception:
-        logger.exception("restaurant_list error")
+        logger.exception("%s %s", request.method, request.path)
         db.rollback()
         return _error("サーバーエラーが発生しました", 500)
     finally:
@@ -159,8 +164,10 @@ def restaurant_detail(request, pk: int):
         if request.method == "PUT":
             try:
                 patch = RestaurantUpdate.model_validate_json(request.body)
-            except ValidationError:
-                return _error("入力値が不正です")
+            except ValidationError as e:
+                details = {str(err["loc"][-1]): err["msg"] for err in e.errors()}
+                logger.warning("validation error: PUT %s body=%r details=%s", request.path, request.body[:500], details)
+                return _error("入力値が不正です", details=details)
             for field, value in patch.model_dump(exclude_unset=True).items():
                 setattr(restaurant, field, value)
             restaurant.updated_at = datetime.utcnow()
@@ -173,7 +180,7 @@ def restaurant_detail(request, pk: int):
         db.commit()
         return JsonResponse({"ok": True})
     except Exception:
-        logger.exception("restaurant_detail error")
+        logger.exception("%s %s", request.method, request.path)
         db.rollback()
         return _error("サーバーエラーが発生しました", 500)
     finally:
@@ -222,7 +229,7 @@ def restaurant_export(request):
         response["Content-Disposition"] = 'attachment; filename="restaurants.csv"'
         return response
     except Exception:
-        logger.exception("restaurant_export error")
+        logger.exception("%s %s", request.method, request.path)
         return _error("サーバーエラーが発生しました", 500)
     finally:
         db.close()
@@ -245,7 +252,8 @@ def photo_upload(request):
         try:
             img = Image.open(io.BytesIO(image_bytes))
             img.verify()
-        except Exception:
+        except Exception as e:
+            logger.warning("%s %s 無効な画像ファイル: %s", request.method, request.path, e)
             return _error("有効な画像ファイルを指定してください")
 
         thumbnail_bytes = _make_thumbnail(image_bytes)
@@ -266,7 +274,7 @@ def photo_upload(request):
         db.refresh(photo_obj)
         return JsonResponse({"id": photo_obj.id, "sort_order": photo_obj.sort_order}, status=201)
     except Exception:
-        logger.exception("photo_upload error")
+        logger.exception("%s %s", request.method, request.path)
         db.rollback()
         return _error("サーバーエラーが発生しました", 500)
     finally:
@@ -289,7 +297,7 @@ def photo_detail(request, pk: int):
 
         return HttpResponse(photo.image_data, content_type="image/jpeg")
     except Exception:
-        logger.exception("photo_detail error")
+        logger.exception("%s %s", request.method, request.path)
         db.rollback()
         return _error("サーバーエラーが発生しました", 500)
     finally:
@@ -331,7 +339,7 @@ def photo_rotate(request, pk: int):
         db.commit()
         return JsonResponse({"ok": True, "rotation": photo.rotation})
     except Exception:
-        logger.exception("photo_rotate error")
+        logger.exception("%s %s", request.method, request.path)
         db.rollback()
         return _error("サーバーエラーが発生しました", 500)
     finally:
@@ -345,8 +353,10 @@ def photo_reorder(request):
     try:
         try:
             data = PhotoReorder.model_validate_json(request.body)
-        except ValidationError:
-            return _error("photo_ids が不正です")
+        except ValidationError as e:
+            details = {str(err["loc"][-1]): err["msg"] for err in e.errors()}
+            logger.warning("validation error: PUT %s body=%r details=%s", request.path, request.body[:500], details)
+            return _error("photo_ids が不正です", details=details)
 
         for i, photo_id in enumerate(data.photo_ids):
             db.query(Photo).filter(
@@ -356,7 +366,7 @@ def photo_reorder(request):
         db.commit()
         return JsonResponse({"ok": True})
     except Exception:
-        logger.exception("photo_reorder error")
+        logger.exception("%s %s", request.method, request.path)
         db.rollback()
         return _error("サーバーエラーが発生しました", 500)
     finally:
@@ -383,15 +393,17 @@ def master_list(request):
 
         try:
             data = MasterCreate.model_validate_json(request.body)
-        except ValidationError:
-            return _error("入力値が不正です")
+        except ValidationError as e:
+            details = {str(err["loc"][-1]): err["msg"] for err in e.errors()}
+            logger.warning("validation error: POST %s body=%r details=%s", request.path, request.body[:500], details)
+            return _error("入力値が不正です", details=details)
         master = Master(**data.model_dump())
         db.add(master)
         db.commit()
         db.refresh(master)
         return JsonResponse({"id": master.id, "category": master.category, "value": master.value}, status=201)
     except Exception:
-        logger.exception("master_list error")
+        logger.exception("%s %s", request.method, request.path)
         db.rollback()
         return _error("サーバーエラーが発生しました", 500)
     finally:
@@ -410,7 +422,7 @@ def master_detail(request, pk: int):
         db.commit()
         return JsonResponse({"ok": True})
     except Exception:
-        logger.exception("master_detail error")
+        logger.exception("%s %s", request.method, request.path)
         db.rollback()
         return _error("サーバーエラーが発生しました", 500)
     finally:
@@ -422,7 +434,8 @@ def master_detail(request, pk: int):
 def admin_verify(request):
     try:
         data = AdminVerify.model_validate_json(request.body)
-    except ValidationError:
+    except ValidationError as e:
+        logger.warning("validation error: POST %s err=%s", request.path, e)
         return _error("パスワードが不正です")
 
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
