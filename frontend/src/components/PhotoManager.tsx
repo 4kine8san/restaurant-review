@@ -20,28 +20,61 @@ export default function PhotoManager({ restaurantId, photos, onChange }: Props) 
   const [preview, setPreview] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const uploadFiles = async (files: File[]) => {
+    const images = files.filter((f) => f.type.startsWith("image/"));
+    if (images.length === 0) {
+      setError("画像ファイルを選択してください");
+      return;
+    }
     setLoading(true);
     setError("");
-    try {
-      const result = await uploadPhoto(restaurantId, file);
-      onChange([...photos, { id: result.id, sort_order: result.sort_order, rotation: 0 }]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "アップロードに失敗しました");
-    } finally {
-      setLoading(false);
-      if (fileRef.current) fileRef.current.value = "";
+    let current = [...photos];
+    for (let i = 0; i < images.length; i++) {
+      if (images.length > 1) setProgress(`${i + 1} / ${images.length}`);
+      try {
+        const result = await uploadPhoto(restaurantId, images[i]);
+        current = [...current, { id: result.id, sort_order: result.sort_order, rotation: 0 }];
+        onChange(current);
+      } catch (err) {
+        setError(
+          images.length > 1
+            ? `${images[i].name}: ${err instanceof Error ? err.message : "アップロードに失敗しました"}`
+            : err instanceof Error ? err.message : "アップロードに失敗しました"
+        );
+      }
     }
+    setLoading(false);
+    setProgress("");
+  };
+
+  const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    await uploadFiles(files);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    await uploadFiles(Array.from(e.dataTransfer.files));
   };
 
   const handleRotate = async (photo: PhotoMeta) => {
     try {
       await rotatePhoto(photo.id);
-      const next = (photo.rotation + 90) % 360;
-      onChange(photos.map((p) => (p.id === photo.id ? { ...p, rotation: next } : p)));
+      onChange(photos.map((p) => (p.id === photo.id ? { ...p, rotation: (photo.rotation + 90) % 360 } : p)));
     } catch (err) {
       setError(err instanceof Error ? err.message : "回転に失敗しました");
     }
@@ -51,9 +84,7 @@ export default function PhotoManager({ restaurantId, photos, onChange }: Props) 
     if (!confirm("この写真を削除しますか?")) return;
     try {
       await deletePhoto(photo.id);
-      const updated = photos
-        .filter((p) => p.id !== photo.id)
-        .map((p, i) => ({ ...p, sort_order: i }));
+      const updated = photos.filter((p) => p.id !== photo.id).map((p, i) => ({ ...p, sort_order: i }));
       onChange(updated);
       if (updated.length > 0) await reorderPhotos(updated.map((p) => p.id));
     } catch (err) {
@@ -77,21 +108,35 @@ export default function PhotoManager({ restaurantId, photos, onChange }: Props) 
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4">
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          disabled={loading}
-          className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 text-sm"
-        >
-          {loading ? "アップロード中..." : "写真を追加"}
-        </button>
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={() => !loading && fileRef.current?.click()}
+        className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center gap-2 cursor-pointer transition-colors
+          ${isDragging ? "border-amber-500 bg-amber-50" : "border-gray-300 bg-gray-50 hover:border-amber-400 hover:bg-amber-50/50"}
+          ${loading ? "cursor-not-allowed opacity-60" : ""}`}
+      >
+        <span className="text-3xl">📷</span>
+        {loading ? (
+          <span className="text-sm text-gray-600">
+            アップロード中{progress ? `… ${progress}` : "…"}
+          </span>
+        ) : (
+          <>
+            <span className="text-sm font-medium text-gray-700">
+              クリックまたはドラッグ&ドロップで写真を追加
+            </span>
+            <span className="text-xs text-gray-400">複数選択可</span>
+          </>
+        )}
         <input
           ref={fileRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
-          onChange={handleUpload}
+          onChange={handleInputChange}
         />
       </div>
 
@@ -116,6 +161,7 @@ export default function PhotoManager({ restaurantId, photos, onChange }: Props) 
             )}
             <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white p-1 flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button
+                type="button"
                 onClick={() => movePhoto(i, -1)}
                 className="p-1 hover:text-amber-300"
                 title="前へ"
@@ -123,6 +169,7 @@ export default function PhotoManager({ restaurantId, photos, onChange }: Props) 
                 ◀
               </button>
               <button
+                type="button"
                 onClick={() => handleRotate(photo)}
                 className="p-1 hover:text-amber-300"
                 title="回転"
@@ -130,6 +177,7 @@ export default function PhotoManager({ restaurantId, photos, onChange }: Props) 
                 ↻
               </button>
               <button
+                type="button"
                 onClick={() => movePhoto(i, 1)}
                 className="p-1 hover:text-amber-300"
                 title="後へ"
@@ -137,6 +185,7 @@ export default function PhotoManager({ restaurantId, photos, onChange }: Props) 
                 ▶
               </button>
               <button
+                type="button"
                 onClick={() => handleDelete(photo)}
                 className="p-1 hover:text-red-400"
                 title="削除"
