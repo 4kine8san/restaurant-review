@@ -1,5 +1,5 @@
 import client from "./client";
-import type { Restaurant, RestaurantListResponse, RestaurantFormData } from "../types";
+import type { Restaurant, RestaurantListResponse, RestaurantFormData, AutofillResult } from "../types";
 
 export interface ListParams {
   keyword?: string;
@@ -33,6 +33,14 @@ export async function updateRestaurant(
 
 export async function deleteRestaurant(id: number): Promise<void> {
   await client.delete(`/restaurants/${id}/`);
+}
+
+export async function autofillRestaurant(
+  name: string,
+  nearest_station: string
+): Promise<AutofillResult> {
+  const { data } = await client.post<AutofillResult>("/restaurants/autofill/", { name, nearest_station });
+  return data;
 }
 
 export function exportUrl(params: ListParams, format: "csv" | "json"): string {

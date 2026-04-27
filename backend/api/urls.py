@@ -14,4 +14,5 @@ urlpatterns = [
     path("masters/<int:pk>/", views.master_detail),
     path("admin/verify/", views.admin_verify),
     path("stats/", views.restaurant_stats),
+    path("restaurants/autofill/", views.restaurant_autofill),
 ]

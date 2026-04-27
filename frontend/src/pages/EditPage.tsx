@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { getRestaurant, createRestaurant, updateRestaurant } from "../api/restaurants";
+import { getRestaurant, createRestaurant, updateRestaurant, autofillRestaurant } from "../api/restaurants";
 import { listMasters } from "../api/masters";
 import type { RestaurantFormData, Master, PhotoMeta } from "../types";
 import { SCENES, RATING_OPTIONS, STAR_OPTIONS } from "../constants";
@@ -22,6 +22,10 @@ const EMPTY_FORM: RestaurantFormData = {
   visit_date: "",
   review_comment: "",
   notes: "",
+  address: "",
+  phone: "",
+  business_hours: "",
+  regular_holiday: "",
 };
 
 function SelectField({
@@ -66,6 +70,7 @@ export default function EditPage() {
   const [genres, setGenres] = useState<Master[]>([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [autofilling, setAutofilling] = useState(false);
   const [restaurantId, setRestaurantId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -90,6 +95,10 @@ export default function EditPage() {
             visit_date: r.visit_date ?? "",
             review_comment: r.review_comment ?? "",
             notes: r.notes ?? "",
+            address: r.address ?? "",
+            phone: r.phone ?? "",
+            business_hours: r.business_hours ?? "",
+            regular_holiday: r.regular_holiday ?? "",
           });
           setPhotos(r.photos ?? []);
           setRestaurantId(r.id);
@@ -116,6 +125,29 @@ export default function EditPage() {
         : null;
     setForm((prev) => ({ ...prev, rating_overall: overall }));
   }, [form.rating_food, form.rating_service, form.rating_atmosphere, form.rating_cost_performance, form.rating_drinks]);
+
+  const handleAutofill = async () => {
+    if (!form.name.trim()) {
+      setError("自動補完には店名が必要です");
+      return;
+    }
+    setAutofilling(true);
+    setError("");
+    try {
+      const result = await autofillRestaurant(form.name, form.nearest_station);
+      setForm((prev) => ({
+        ...prev,
+        address: result.address ?? prev.address,
+        phone: result.phone ?? prev.phone,
+        business_hours: result.business_hours ?? prev.business_hours,
+        regular_holiday: result.regular_holiday ?? prev.regular_holiday,
+      }));
+    } catch {
+      setError("自動補完に失敗しました");
+    } finally {
+      setAutofilling(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,6 +245,64 @@ export default function EditPage() {
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm"
                 />
               </div>
+            </div>
+          </div>
+
+          <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow p-6 space-y-4">
+            <div className="flex items-center justify-between border-b pb-2">
+              <h2 className="font-semibold text-gray-700">店舗情報</h2>
+              <button
+                type="button"
+                onClick={handleAutofill}
+                disabled={autofilling || !form.name.trim()}
+                className="px-3 py-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {autofilling ? "取得中..." : "自動補完"}
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">住所</label>
+              <input
+                type="text"
+                value={form.address}
+                onChange={(e) => set("address", e.target.value)}
+                maxLength={300}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">電話番号</label>
+                <input
+                  type="text"
+                  value={form.phone}
+                  onChange={(e) => set("phone", e.target.value)}
+                  maxLength={30}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">定休日</label>
+                <input
+                  type="text"
+                  value={form.regular_holiday}
+                  onChange={(e) => set("regular_holiday", e.target.value)}
+                  maxLength={100}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">営業時間</label>
+              <textarea
+                value={form.business_hours}
+                onChange={(e) => set("business_hours", e.target.value)}
+                rows={2}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm"
+              />
             </div>
           </div>
 

@@ -41,6 +41,7 @@ def upgrade() -> None:
         sa.Column("visit_date", sa.String(20), nullable=True),
         sa.Column("review_comment", sa.Text, nullable=True),
         sa.Column("notes", sa.Text, nullable=True),
+        sa.Column("tabelog_id", sa.String(20), nullable=True),
         sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime, server_default=sa.func.now(), onupdate=sa.func.now()),
         sa.Column("deleted_at", sa.DateTime, nullable=True),

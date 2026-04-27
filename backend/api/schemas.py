@@ -20,6 +20,10 @@ class RestaurantCreate(BaseModel):
     notes: Optional[str] = None
     tabelog_id: Optional[str] = Field(None, max_length=20)
     prefecture: Optional[str] = Field(None, max_length=50)
+    address: Optional[str] = Field(None, max_length=300)
+    phone: Optional[str] = Field(None, max_length=30)
+    business_hours: Optional[str] = None
+    regular_holiday: Optional[str] = Field(None, max_length=100)
 
 
 class RestaurantUpdate(RestaurantCreate):
