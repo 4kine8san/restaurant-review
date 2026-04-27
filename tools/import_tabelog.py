@@ -2,7 +2,11 @@
 食べログ エクスポートデータ インポートスクリプト
 
 事前準備:
-  - バックエンドサーバーを起動しておく (http://127.0.0.1:8000)
+  - `pip install -r tools/requirements.txt`（ホストの Python でスクリプトを実行する場合）
+  - バックエンドサーバーを起動しておく（デフォルトは http://127.0.0.1:8000）
+  - 別ポートや別ホストなら環境変数 `IMPORT_API_BASE`（例: `http://127.0.0.1:8000`。末尾スラッシュ不要。`/api` は自動付与）
+  - **DB に書き込む場合は `--dry-run` を付けない**（付けると表示のみで DB は変わりません）
+  - 確認は「この API が参照している DB」と一致させる（Docker 利用時は compose の Postgres を見ているか）
   - 食べログのエクスポートデータフォルダを用意する（公式からはエクスポートできないので、自分で作成したデータを利用する）
     （tabelog_reviews.csv と photos/ フォルダを含むこと）
 
@@ -22,6 +26,7 @@
 """
 
 import csv
+import os
 import re
 import sys
 from pathlib import Path
@@ -32,7 +37,21 @@ sys.stdout.reconfigure(encoding="utf-8")  # type: ignore
 
 # ──────────────────────────── 設定 ────────────────────────────
 
-API_BASE = "http://127.0.0.1:8000/api"
+def _api_base() -> str:
+    root = os.environ.get("IMPORT_API_BASE", "http://127.0.0.1:8000").rstrip("/")
+    return f"{root}/api"
+
+
+API_BASE = _api_base()
+
+
+def _require_ok(resp: requests.Response, what: str) -> None:
+    if resp.ok:
+        return
+    body = (resp.text or "").replace("\r", "").strip()
+    if len(body) > 800:
+        body = body[:800] + "..."
+    raise RuntimeError(f"{what}: HTTP {resp.status_code} — {body}")
 
 # 食べログジャンル → マスタジャンル名 のマッピング
 # マスタに存在する値: 和食, 洋食, 中華, イタリアン, フレンチ, 焼肉, 寿司, ラーメン, 居酒屋, カフェ, その他
@@ -163,8 +182,8 @@ def parse_area_genre(raw: str) -> tuple[str, str]:
 
 def fetch_genre_masters() -> dict[str, int]:
     """マスタジャンルを取得し {ジャンル名: id} の辞書を返す"""
-    resp = requests.get(f"{API_BASE}/masters/?type=genre", timeout=10)
-    resp.raise_for_status()
+    resp = requests.get(f"{API_BASE}/masters/", params={"category": "genre"}, timeout=10)
+    _require_ok(resp, "GET /masters/?category=genre")
     return {item["value"]: item["id"] for item in resp.json().get("items", [])}
 
 
@@ -173,8 +192,8 @@ def fetch_all_restaurants() -> dict[str, int]:
     result: dict[str, int] = {}
     page = 1
     while True:
-        resp = requests.get(f"{API_BASE}/restaurants/?page={page}", timeout=10)
-        resp.raise_for_status()
+        resp = requests.get(f"{API_BASE}/restaurants/", params={"page": page}, timeout=10)
+        _require_ok(resp, f"GET /restaurants/?page={page}")
         data = resp.json()
         for item in data.get("items", []):
             tid = item.get("tabelog_id")
@@ -259,13 +278,13 @@ def parse_row(row: dict, genre_name_to_id: dict[str, int]) -> dict:
 
 def create_restaurant(payload: dict) -> int:
     resp = requests.post(f"{API_BASE}/restaurants/", json=payload, timeout=30)
-    resp.raise_for_status()
+    _require_ok(resp, "POST /restaurants/")
     return resp.json()["id"]
 
 
 def update_restaurant(restaurant_id: int, payload: dict) -> None:
     resp = requests.put(f"{API_BASE}/restaurants/{restaurant_id}/", json=payload, timeout=30)
-    resp.raise_for_status()
+    _require_ok(resp, f"PUT /restaurants/{restaurant_id}/")
 
 
 def upload_photo(restaurant_id: int, img_path: Path) -> None:
@@ -278,7 +297,7 @@ def upload_photo(restaurant_id: int, img_path: Path) -> None:
             files={"photo": (img_path.name, f, content_type)},
             timeout=60,
         )
-    resp.raise_for_status()
+    _require_ok(resp, "POST /photos/")
 
 
 # ──────────────────────────── メイン処理 ────────────────────────────
@@ -299,6 +318,7 @@ def main() -> None:
         log(f"エラー: {csv_path} が見つかりません")
         sys.exit(1)
 
+    log(f"API 接続先: {API_BASE}")
     if dry_run:
         log("【DRY RUN モード】DBへの書き込みは行いません\n")
 
@@ -333,6 +353,7 @@ def main() -> None:
     created = 0
     updated = 0
     photo_total = 0
+    dry_count = 0
     errors: list[tuple[str, str]] = []
 
     for i, row in enumerate(rows, 1):
@@ -351,7 +372,7 @@ def main() -> None:
                     f"料理:{review['rating_food']} CP:{review['rating_cost_performance']} 酒:{review['rating_drinks']} "
                     f"写真:{len(review['_photo_paths'])}枚"
                 )
-                created += 1
+                dry_count += 1
                 continue
 
             existing_id = existing_tabelog_id_to_id.get(review["tabelog_id"])
@@ -389,7 +410,17 @@ def main() -> None:
 
     # 結果サマリー
     log(f"\n{'='*50}")
-    log(f"完了: 新規 {created}件 / 更新 {updated}件 / エラー {len(errors)}件")
+    if dry_run:
+        log(f"DRY RUN 終了: {dry_count} 行を表示しました（データベースは変更されていません）")
+    else:
+        log(f"完了: 新規 {created}件 / 更新 {updated}件 / エラー {len(errors)}件")
+        if created == 0 and updated == 0 and not errors:
+            log("警告: 作成・更新が0件です。CSV が空、またはすべてスキップされた可能性があります。")
+        elif created + updated > 0:
+            log(
+                "件数確認 (Docker): docker compose exec db psql -U restaurant -d restaurant_review "
+                '-c "SELECT COUNT(*) FROM restaurants;"'
+            )
     if not dry_run and not skip_photos:
         log(f"アップロード写真: 計 {photo_total}枚")
     if errors:

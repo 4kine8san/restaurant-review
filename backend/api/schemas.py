@@ -1,12 +1,14 @@
 from typing import Optional
 from decimal import Decimal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+_VALID_SCENES = {"", "朝", "昼", "夜", "持ち帰り", "その他"}
 
 
 class RestaurantCreate(BaseModel):
-    name: str = Field(..., max_length=200)
+    name: str = Field(..., min_length=1, max_length=200)
     nearest_station: Optional[str] = Field(None, max_length=100)
-    genre_id: Optional[int] = None
+    genre_id: Optional[int] = Field(None, ge=1)
     scene: Optional[str] = Field(None, max_length=50)
     stars: Optional[int] = Field(None, ge=1, le=5)
     rating_overall: Optional[Decimal] = Field(None, ge=Decimal("1.0"), le=Decimal("5.0"))
@@ -25,9 +27,16 @@ class RestaurantCreate(BaseModel):
     business_hours: Optional[str] = Field(None, max_length=500)
     regular_holiday: Optional[str] = Field(None, max_length=100)
 
+    @field_validator("scene")
+    @classmethod
+    def scene_must_be_valid(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in _VALID_SCENES:
+            raise ValueError(f"scene は {sorted(_VALID_SCENES)} のいずれかである必要があります")
+        return v
+
 
 class RestaurantUpdate(RestaurantCreate):
-    name: Optional[str] = Field(None, max_length=200)
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
 
 
 class MasterCreate(BaseModel):
@@ -41,4 +50,4 @@ class AdminVerify(BaseModel):
 
 
 class PhotoReorder(BaseModel):
-    photo_ids: list[int]
+    photo_ids: list[int] = Field(..., min_length=1)

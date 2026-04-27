@@ -119,8 +119,10 @@ def restaurant_list(request):
                 query = query.order_by(Restaurant.created_at.desc())
 
             total = query.count()
-            page = max(1, int(request.GET.get("page", 1)))
             per_page = 50
+            page = max(1, int(request.GET.get("page", 1)))
+            max_page = max(1, (total + per_page - 1) // per_page) if total else 1
+            page = min(page, max_page)
             restaurants = query.offset((page - 1) * per_page).limit(per_page).all()
 
             return JsonResponse({
