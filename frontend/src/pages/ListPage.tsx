@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { listRestaurants, deleteRestaurant, exportUrl } from "../api/restaurants";
 import { listMasters } from "../api/masters";
 import type { Restaurant, Master } from "../types";
@@ -198,6 +198,12 @@ export default function ListPage({ isAdmin, onLogout, onLogin }: Props) {
             >
               JSON
             </a>
+            <Link
+              to="/chart"
+              className="text-xs text-amber-700 hover:underline"
+            >
+              グラフ
+            </Link>
           </div>
         </div>
       </header>

@@ -84,6 +84,7 @@ def _serialize_restaurant(r: Restaurant, include_thumb: bool = True) -> dict:
         "review_comment": r.review_comment,
         "notes": r.notes,
         "tabelog_id": r.tabelog_id,
+        "prefecture": r.prefecture,
         "thumbnail_url": thumb_url,
         "photo_count": len(active_photos),
         "created_at": r.created_at.isoformat() if r.created_at else None,
@@ -449,3 +450,67 @@ def admin_verify(request):
     if data.password == admin_password:
         return JsonResponse({"ok": True})
     return JsonResponse({"ok": False, "error": "パスワードが違います"}, status=401)
+
+
+@require_http_methods(["GET"])
+def restaurant_stats(request):
+    db = _get_db()
+    try:
+        x_axis = request.GET.get("x_axis", "genre")
+        y_axis = request.GET.get("y_axis", "count")
+
+        VALID_X = {"genre", "scene", "stars", "visit_year", "visit_month", "prefecture"}
+        VALID_Y = {"count", "rating_avg", "rating_sum"}
+        if x_axis not in VALID_X or y_axis not in VALID_Y:
+            return _error("パラメータが不正です")
+
+        restaurants = db.query(Restaurant).filter(Restaurant.deleted_at.is_(None)).all()
+
+        groups: dict[str, list] = {}
+
+        for r in restaurants:
+            if x_axis == "genre":
+                label = r.genre.value if r.genre else "未設定"
+            elif x_axis == "scene":
+                label = r.scene if r.scene else "未設定"
+            elif x_axis == "stars":
+                label = str(r.stars) if r.stars is not None else "未設定"
+            elif x_axis == "visit_year":
+                label = r.visit_date[:4] if r.visit_date and len(r.visit_date) >= 4 else "未設定"
+            elif x_axis == "visit_month":
+                parts = (r.visit_date or "").split("/")
+                label = f"{int(parts[1])}月" if len(parts) >= 2 else "未設定"
+            else:  # prefecture
+                label = r.prefecture if r.prefecture else "その他"
+
+            if label not in groups:
+                groups[label] = []
+
+            if y_axis == "count":
+                groups[label].append(1)
+            elif r.rating_overall is not None:
+                groups[label].append(float(r.rating_overall))
+
+        data = []
+        for label, values in groups.items():
+            if y_axis == "count":
+                val: float = float(len(values))
+            elif y_axis == "rating_avg":
+                val = round(sum(values) / len(values), 2) if values else 0.0
+            else:  # rating_sum
+                val = round(sum(values), 1)
+            data.append({"label": label, "value": val})
+
+        if x_axis == "stars":
+            data.sort(key=lambda x: int(x["label"]) if x["label"].isdigit() else 99)
+        elif x_axis in ("visit_year", "visit_month"):
+            data.sort(key=lambda x: x["label"])
+        else:
+            data.sort(key=lambda x: -x["value"])
+
+        return JsonResponse({"x_axis": x_axis, "y_axis": y_axis, "data": data})
+    except Exception:
+        logger.exception("%s %s", request.method, request.path)
+        return _error("サーバーエラーが発生しました", 500)
+    finally:
+        db.close()

@@ -19,6 +19,7 @@ class RestaurantCreate(BaseModel):
     review_comment: Optional[str] = None
     notes: Optional[str] = None
     tabelog_id: Optional[str] = Field(None, max_length=20)
+    prefecture: Optional[str] = Field(None, max_length=50)
 
 
 class RestaurantUpdate(RestaurantCreate):

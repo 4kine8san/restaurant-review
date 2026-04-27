@@ -3,6 +3,7 @@ import { useAdmin } from "./hooks/useAdmin";
 import ListPage from "./pages/ListPage";
 import EditPage from "./pages/EditPage";
 import DetailPage from "./pages/DetailPage";
+import ChartPage from "./pages/ChartPage";
 
 export default function App() {
   const { isAdmin, login, logout } = useAdmin();
@@ -23,6 +24,7 @@ export default function App() {
           path="/restaurants/:id/edit"
           element={isAdmin ? <EditPage /> : <Navigate to="/" replace />}
         />
+        <Route path="/chart" element={<ChartPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
