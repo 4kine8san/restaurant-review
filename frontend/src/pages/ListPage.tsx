@@ -33,6 +33,9 @@ export default function ListPage({ isAdmin, onLogout, onLogin }: Props) {
       const result = await listRestaurants(state.params);
       setRestaurants(result.items);
       setTotal(result.total);
+      if (result.page !== (state.params.page ?? 1)) {
+        update({ params: { ...state.params, page: result.page } });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "データ取得に失敗しました");
     } finally {
