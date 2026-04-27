@@ -606,11 +606,7 @@ def restaurant_autofill(request):
         query = " ".join(filter(None, [name, nearest_station, "住所", "電話番号", "営業時間", "定休日"]))
         search_text = _brave_search(query, brave_key)
         info = _extract_store_info(search_text, name, gemini_key)
-        logger.info("autofill ok name=%r address=%r phone=%r", name, info.get("address"), info.get("phone"))
         return JsonResponse(info)
-    except Exception as e:
+    except Exception:
         logger.exception("autofill name=%s", name)
-        msg = str(e)
-        if "429" in msg or "quota" in msg.lower() or "rate" in msg.lower():
-            return _error("Gemini API のレート制限に達しました。1分ほど待ってから再試行してください。", 503)
         return _error("自動補完に失敗しました", 500)
