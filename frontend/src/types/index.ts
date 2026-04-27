@@ -28,6 +28,10 @@ export interface Restaurant {
   visit_date: string | null;
   review_comment: string | null;
   notes: string | null;
+  address: string | null;
+  phone: string | null;
+  business_hours: string | null;
+  regular_holiday: string | null;
   thumbnail_url: string | null;
   photo_count: number;
   created_at: string | null;
@@ -57,4 +61,15 @@ export interface RestaurantFormData {
   visit_date: string;
   review_comment: string;
   notes: string;
+  address: string;
+  phone: string;
+  business_hours: string;
+  regular_holiday: string;
+}
+
+export interface AutofillResult {
+  address: string | null;
+  phone: string | null;
+  business_hours: string | null;
+  regular_holiday: string | null;
 }

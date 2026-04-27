@@ -1,16 +1,19 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: restaurant
-      POSTGRES_PASSWORD: restaurant
-      POSTGRES_DB: restaurant_review
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: ./backend
@@ -19,14 +22,15 @@ services:
       - ./backend:/app
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql://restaurant:restaurant@db:5432/restaurant_review
-      DJANGO_SECRET_KEY: dev-secret-key-change-in-production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       DJANGO_DEBUG: "True"
       ALLOWED_HOSTS: localhost,127.0.0.1
-      ADMIN_PASSWORD: admin123
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   frontend:
     build: ./frontend

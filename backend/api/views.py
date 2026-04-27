@@ -3,6 +3,9 @@ import io
 import csv
 import json
 import logging
+import re
+import urllib.request
+import urllib.parse
 from datetime import datetime
 
 from django.http import HttpResponse, JsonResponse
@@ -85,6 +88,10 @@ def _serialize_restaurant(r: Restaurant, include_thumb: bool = True) -> dict:
         "notes": r.notes,
         "tabelog_id": r.tabelog_id,
         "prefecture": r.prefecture,
+        "address": r.address,
+        "phone": r.phone,
+        "business_hours": r.business_hours,
+        "regular_holiday": r.regular_holiday,
         "thumbnail_url": thumb_url,
         "photo_count": len(active_photos),
         "created_at": r.created_at.isoformat() if r.created_at else None,
@@ -514,3 +521,86 @@ def restaurant_stats(request):
         return _error("サーバーエラーが発生しました", 500)
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# Autofill helpers
+# ---------------------------------------------------------------------------
+
+def _brave_search(query: str, api_key: str) -> str:
+    params = urllib.parse.urlencode({"q": query, "count": 5, "country": "JP", "search_lang": "ja"})
+    url = f"https://api.search.brave.com/res/v1/web/search?{params}"
+    req = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json", "X-Subscription-Token": api_key},
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    snippets = []
+    for item in data.get("web", {}).get("results", []):
+        snippets.append(
+            f"タイトル: {item.get('title', '')}\n"
+            f"URL: {item.get('url', '')}\n"
+            f"概要: {item.get('description', '')}"
+        )
+    return "\n\n".join(snippets[:5])
+
+
+def _extract_store_info(search_text: str, name: str, api_key: str) -> dict:
+    import google.generativeai as genai
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.0-flash")
+    prompt = (
+        f"以下の検索結果から「{name}」の店舗情報を抽出してください。\n"
+        "情報が見当たらない場合はnullにし、JSONのみを返してください（説明文・コードブロック不要）。\n\n"
+        f"検索結果:\n{search_text}\n\n"
+        "返すJSON:\n"
+        '{"address": "住所またはnull", "phone": "電話番号またはnull", '
+        '"business_hours": "営業時間またはnull", "regular_holiday": "定休日またはnull"}'
+    )
+    text = model.generate_content(prompt).text.strip()
+    text = re.sub(r"^```(?:json)?\n?", "", text)
+    text = re.sub(r"\n?```$", "", text)
+    try:
+        result = json.loads(text)
+    except json.JSONDecodeError:
+        m = re.search(r"\{[^{}]*\}", text, re.DOTALL)
+        result = json.loads(m.group()) if m else {}
+    return {
+        "address": result.get("address") or None,
+        "phone": result.get("phone") or None,
+        "business_hours": result.get("business_hours") or None,
+        "regular_holiday": result.get("regular_holiday") or None,
+    }
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def restaurant_autofill(request):
+    """Brave Search + Gemini で住所・電話番号・営業時間・定休日を自動補完する。"""
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _error("リクエストが不正です")
+
+    name = (body.get("name") or "").strip()
+    nearest_station = (body.get("nearest_station") or "").strip()
+    if not name:
+        return _error("店名は必須です")
+
+    brave_key = os.environ.get("BRAVE_API_KEY", "")
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    if not brave_key:
+        return _error("BRAVE_API_KEY が設定されていません", 500)
+    if not gemini_key:
+        return _error("GEMINI_API_KEY が設定されていません", 500)
+
+    try:
+        query = " ".join(filter(None, [name, nearest_station, "住所", "電話番号", "営業時間", "定休日"]))
+        search_text = _brave_search(query, brave_key)
+        info = _extract_store_info(search_text, name, gemini_key)
+        return JsonResponse(info)
+    except Exception:
+        logger.exception("autofill name=%s", name)
+        return _error("自動補完に失敗しました", 500)

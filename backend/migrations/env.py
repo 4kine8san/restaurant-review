@@ -30,7 +30,11 @@ def run_migrations_online():
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            transaction_per_migration=True,  # 各マイグレーションを独立トランザクションで実行
+        )
         with context.begin_transaction():
             context.run_migrations()
 
