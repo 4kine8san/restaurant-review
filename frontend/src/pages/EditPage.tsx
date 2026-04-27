@@ -147,7 +147,7 @@ export default function EditPage() {
     <div className="min-h-screen">
       <header className="bg-white/80 backdrop-blur-sm shadow-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center gap-4">
-          <button onClick={() => navigate(-1)} className="text-amber-600 hover:text-amber-800">
+          <button type="button" onClick={() => navigate(-1)} className="text-amber-600 hover:text-amber-800">
             ← 戻る
           </button>
           <h1 className="text-lg font-bold text-amber-800">{isNew ? "新規登録" : "編集"}</h1>

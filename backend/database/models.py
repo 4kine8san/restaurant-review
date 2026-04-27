@@ -36,6 +36,7 @@ class Restaurant(Base):
     visit_date = Column(String(20), nullable=True)
     review_comment = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
+    tabelog_id = Column(String(20), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True)

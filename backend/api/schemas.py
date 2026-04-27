@@ -18,6 +18,7 @@ class RestaurantCreate(BaseModel):
     visit_date: Optional[str] = Field(None, max_length=20)
     review_comment: Optional[str] = None
     notes: Optional[str] = None
+    tabelog_id: Optional[str] = Field(None, max_length=20)
 
 
 class RestaurantUpdate(RestaurantCreate):

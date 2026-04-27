@@ -83,6 +83,7 @@ def _serialize_restaurant(r: Restaurant, include_thumb: bool = True) -> dict:
         "visit_date": r.visit_date,
         "review_comment": r.review_comment,
         "notes": r.notes,
+        "tabelog_id": r.tabelog_id,
         "thumbnail_url": thumb_url,
         "photo_count": len(active_photos),
         "created_at": r.created_at.isoformat() if r.created_at else None,

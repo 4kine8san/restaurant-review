@@ -54,13 +54,14 @@ export default function DetailPage({ isAdmin }: Props) {
       <header className="bg-white/80 backdrop-blur-sm shadow-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button onClick={() => navigate(-1)} className="text-amber-600 hover:text-amber-800">
+            <button type="button" onClick={() => navigate(-1)} className="text-amber-600 hover:text-amber-800">
               ← 戻る
             </button>
             <h1 className="text-lg font-bold text-amber-800">{r.name}</h1>
           </div>
           {isAdmin && (
             <button
+              type="button"
               onClick={() => navigate(`/restaurants/${r.id}/edit`)}
               className="px-4 py-1.5 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700"
             >
