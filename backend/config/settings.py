@@ -57,7 +57,7 @@ LOGGING = {
     "disable_existing_loggers": False,
     "formatters": {
         "verbose": {
-            "format": "{asctime} {levelname} {name} {message}",
+            "format": "{asctime} {levelname} {name}:{lineno} {message}",
             "style": "{",
         },
     },
@@ -85,6 +85,11 @@ LOGGING = {
         "django.server": {
             "handlers": ["console"],
             "level": "INFO",
+            "propagate": False,
+        },
+        "sqlalchemy.engine": {
+            "handlers": ["console"],
+            "level": "DEBUG" if DEBUG else "WARNING",
             "propagate": False,
         },
     },

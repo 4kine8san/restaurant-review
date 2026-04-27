@@ -142,8 +142,8 @@ export default function EditPage() {
         business_hours: result.business_hours ?? prev.business_hours,
         regular_holiday: result.regular_holiday ?? prev.regular_holiday,
       }));
-    } catch {
-      setError("自動補完に失敗しました");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "自動補完に失敗しました");
     } finally {
       setAutofilling(false);
     }

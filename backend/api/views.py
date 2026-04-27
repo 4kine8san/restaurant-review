@@ -142,6 +142,7 @@ def restaurant_list(request):
         db.add(restaurant)
         db.commit()
         db.refresh(restaurant)
+        logger.info("restaurant created id=%d name=%r", restaurant.id, restaurant.name)
         return JsonResponse(_serialize_restaurant(restaurant), status=201)
     except Exception:
         logger.exception("%s %s", request.method, request.path)
@@ -177,16 +178,19 @@ def restaurant_detail(request, pk: int):
                 details = {str(err["loc"][-1]): err["msg"] for err in e.errors()}
                 logger.warning("validation error: PUT %s body=%r details=%s", request.path, request.body[:500], details)
                 return _error("入力値が不正です", details=details)
+            updated_fields = list(patch.model_dump(exclude_unset=True).keys())
             for field, value in patch.model_dump(exclude_unset=True).items():
                 setattr(restaurant, field, value)
             restaurant.updated_at = datetime.utcnow()
             db.commit()
             db.refresh(restaurant)
+            logger.info("restaurant updated id=%d fields=%s", pk, updated_fields)
             return JsonResponse(_serialize_restaurant(restaurant))
 
         # DELETE
         restaurant.deleted_at = datetime.utcnow()
         db.commit()
+        logger.info("restaurant deleted id=%d", pk)
         return JsonResponse({"ok": True})
     except Exception:
         logger.exception("%s %s", request.method, request.path)
@@ -528,7 +532,7 @@ def restaurant_stats(request):
 # ---------------------------------------------------------------------------
 
 def _brave_search(query: str, api_key: str) -> str:
-    params = urllib.parse.urlencode({"q": query, "count": 5, "country": "JP", "search_lang": "ja"})
+    params = urllib.parse.urlencode({"q": query, "count": 5})
     url = f"https://api.search.brave.com/res/v1/web/search?{params}"
     req = urllib.request.Request(
         url,
@@ -600,7 +604,11 @@ def restaurant_autofill(request):
         query = " ".join(filter(None, [name, nearest_station, "住所", "電話番号", "営業時間", "定休日"]))
         search_text = _brave_search(query, brave_key)
         info = _extract_store_info(search_text, name, gemini_key)
+        logger.info("autofill ok name=%r address=%r phone=%r", name, info.get("address"), info.get("phone"))
         return JsonResponse(info)
-    except Exception:
+    except Exception as e:
         logger.exception("autofill name=%s", name)
+        msg = str(e)
+        if "429" in msg or "quota" in msg.lower() or "rate" in msg.lower():
+            return _error("Gemini API のレート制限に達しました。1分ほど待ってから再試行してください。", 503)
         return _error("自動補完に失敗しました", 500)

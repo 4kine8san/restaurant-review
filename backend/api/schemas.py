@@ -16,13 +16,13 @@ class RestaurantCreate(BaseModel):
     rating_cost_performance: Optional[Decimal] = Field(None, ge=Decimal("1.0"), le=Decimal("5.0"))
     rating_drinks: Optional[Decimal] = Field(None, ge=Decimal("1.0"), le=Decimal("5.0"))
     visit_date: Optional[str] = Field(None, max_length=20)
-    review_comment: Optional[str] = None
-    notes: Optional[str] = None
+    review_comment: Optional[str] = Field(None, max_length=5000)
+    notes: Optional[str] = Field(None, max_length=2000)
     tabelog_id: Optional[str] = Field(None, max_length=20)
     prefecture: Optional[str] = Field(None, max_length=50)
     address: Optional[str] = Field(None, max_length=300)
     phone: Optional[str] = Field(None, max_length=30)
-    business_hours: Optional[str] = None
+    business_hours: Optional[str] = Field(None, max_length=500)
     regular_holiday: Optional[str] = Field(None, max_length=100)
 
 
