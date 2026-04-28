@@ -1,4 +1,4 @@
-﻿import os
+import os
 import io
 import csv
 import json
@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from database.connection import SessionLocal
 from database.models import Restaurant, Photo, Master
 from .schemas import RestaurantCreate, RestaurantUpdate, MasterCreate, AdminVerify, PhotoReorder
+from . import messages as msg
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,10 @@ def _apply_filters(query, params):
     return query
 
 
+def _maybe_float(v) -> float | None:
+    return float(v) if v is not None else None
+
+
 def _serialize_restaurant(r: Restaurant, include_thumb: bool = True) -> dict:
     active_photos = [p for p in r.photos if p.deleted_at is None]
     thumb_url = None
@@ -77,12 +82,12 @@ def _serialize_restaurant(r: Restaurant, include_thumb: bool = True) -> dict:
         "genre_name": r.genre.value if r.genre else None,
         "scene": r.scene,
         "stars": r.stars,
-        "rating_overall": float(r.rating_overall) if r.rating_overall else None,
-        "rating_food": float(r.rating_food) if r.rating_food else None,
-        "rating_service": float(r.rating_service) if r.rating_service else None,
-        "rating_atmosphere": float(r.rating_atmosphere) if r.rating_atmosphere else None,
-        "rating_cost_performance": float(r.rating_cost_performance) if r.rating_cost_performance else None,
-        "rating_drinks": float(r.rating_drinks) if r.rating_drinks else None,
+        "rating_overall": _maybe_float(r.rating_overall),
+        "rating_food": _maybe_float(r.rating_food),
+        "rating_service": _maybe_float(r.rating_service),
+        "rating_atmosphere": _maybe_float(r.rating_atmosphere),
+        "rating_cost_performance": _maybe_float(r.rating_cost_performance),
+        "rating_drinks": _maybe_float(r.rating_drinks),
         "visit_date": r.visit_date,
         "review_comment": r.review_comment,
         "notes": r.notes,
@@ -138,7 +143,7 @@ def restaurant_list(request):
         except ValidationError as e:
             details = {str(err["loc"][-1]): err["msg"] for err in e.errors()}
             logger.warning("validation error: POST %s body=%r details=%s", request.path, request.body[:500], details)
-            return _error("入力値が不正です", details=details)
+            return _error(msg.ERR_INVALID_INPUT, details=details)
 
         restaurant = Restaurant(**data.model_dump())
         db.add(restaurant)
@@ -149,7 +154,7 @@ def restaurant_list(request):
     except Exception:
         logger.exception("%s %s", request.method, request.path)
         db.rollback()
-        return _error("サーバーエラーが発生しました", 500)
+        return _error(msg.ERR_SERVER, 500)
     finally:
         db.close()
 
@@ -163,7 +168,7 @@ def restaurant_detail(request, pk: int):
             Restaurant.id == pk, Restaurant.deleted_at.is_(None)
         ).first()
         if not restaurant:
-            return _error("レストランが見つかりません", 404)
+            return _error(msg.ERR_RESTAURANT_NOT_FOUND, 404)
 
         if request.method == "GET":
             data = _serialize_restaurant(restaurant)
@@ -179,14 +184,14 @@ def restaurant_detail(request, pk: int):
             except ValidationError as e:
                 details = {str(err["loc"][-1]): err["msg"] for err in e.errors()}
                 logger.warning("validation error: PUT %s body=%r details=%s", request.path, request.body[:500], details)
-                return _error("入力値が不正です", details=details)
-            updated_fields = list(patch.model_dump(exclude_unset=True).keys())
-            for field, value in patch.model_dump(exclude_unset=True).items():
+                return _error(msg.ERR_INVALID_INPUT, details=details)
+            updates = patch.model_dump(exclude_unset=True)
+            for field, value in updates.items():
                 setattr(restaurant, field, value)
             restaurant.updated_at = datetime.utcnow()
             db.commit()
             db.refresh(restaurant)
-            logger.info("restaurant updated id=%d fields=%s", pk, updated_fields)
+            logger.info("restaurant updated id=%d fields=%s", pk, list(updates.keys()))
             return JsonResponse(_serialize_restaurant(restaurant))
 
         # DELETE
@@ -197,7 +202,7 @@ def restaurant_detail(request, pk: int):
     except Exception:
         logger.exception("%s %s", request.method, request.path)
         db.rollback()
-        return _error("サーバーエラーが発生しました", 500)
+        return _error(msg.ERR_SERVER, 500)
     finally:
         db.close()
 
@@ -245,7 +250,7 @@ def restaurant_export(request):
         return response
     except Exception:
         logger.exception("%s %s", request.method, request.path)
-        return _error("サーバーエラーが発生しました", 500)
+        return _error(msg.ERR_SERVER, 500)
     finally:
         db.close()
 
@@ -257,11 +262,11 @@ def photo_upload(request):
     try:
         restaurant_id = request.POST.get("restaurant_id")
         if not restaurant_id:
-            return _error("restaurant_id は必須です")
+            return _error(msg.ERR_PHOTO_RESTAURANT_ID)
 
         file = request.FILES.get("photo")
         if not file:
-            return _error("photo ファイルが必要です")
+            return _error(msg.ERR_PHOTO_FILE_REQUIRED)
 
         image_bytes = file.read()
         try:
@@ -269,11 +274,11 @@ def photo_upload(request):
             img.verify()
         except Exception as e:
             logger.warning("%s %s 無効な画像ファイル: %s", request.method, request.path, e)
-            return _error("有効な画像ファイルを指定してください")
+            return _error(msg.ERR_PHOTO_INVALID_FILE)
 
         thumbnail_bytes = _make_thumbnail(image_bytes)
 
-        max_order = db.query(Photo).filter(
+        next_sort_order = db.query(Photo).filter(
             Photo.restaurant_id == int(restaurant_id),
             Photo.deleted_at.is_(None),
         ).count()
@@ -282,7 +287,7 @@ def photo_upload(request):
             restaurant_id=int(restaurant_id),
             image_data=image_bytes,
             thumbnail_data=thumbnail_bytes,
-            sort_order=max_order,
+            sort_order=next_sort_order,
         )
         db.add(photo_obj)
         db.commit()
@@ -291,7 +296,7 @@ def photo_upload(request):
     except Exception:
         logger.exception("%s %s", request.method, request.path)
         db.rollback()
-        return _error("サーバーエラーが発生しました", 500)
+        return _error(msg.ERR_SERVER, 500)
     finally:
         db.close()
 
@@ -303,7 +308,7 @@ def photo_detail(request, pk: int):
     try:
         photo = db.query(Photo).filter(Photo.id == pk, Photo.deleted_at.is_(None)).first()
         if not photo:
-            return _error("写真が見つかりません", 404)
+            return _error(msg.ERR_PHOTO_NOT_FOUND, 404)
 
         if request.method == "DELETE":
             photo.deleted_at = datetime.utcnow()
@@ -314,7 +319,7 @@ def photo_detail(request, pk: int):
     except Exception:
         logger.exception("%s %s", request.method, request.path)
         db.rollback()
-        return _error("サーバーエラーが発生しました", 500)
+        return _error(msg.ERR_SERVER, 500)
     finally:
         db.close()
 
@@ -325,11 +330,11 @@ def photo_thumbnail(request, pk: int):
     try:
         photo = db.query(Photo).filter(Photo.id == pk, Photo.deleted_at.is_(None)).first()
         if not photo:
-            return _error("写真が見つかりません", 404)
+            return _error(msg.ERR_PHOTO_NOT_FOUND, 404)
         return HttpResponse(photo.thumbnail_data, content_type="image/jpeg")
     except Exception:
         logger.exception("%s %s", request.method, request.path)
-        return _error("サーバーエラーが発生しました", 500)
+        return _error(msg.ERR_SERVER, 500)
     finally:
         db.close()
 
@@ -342,7 +347,7 @@ def photo_rotate(request, pk: int):
     try:
         photo = db.query(Photo).filter(Photo.id == pk, Photo.deleted_at.is_(None)).first()
         if not photo:
-            return _error("写真が見つかりません", 404)
+            return _error(msg.ERR_PHOTO_NOT_FOUND, 404)
 
         img = Image.open(io.BytesIO(photo.image_data))
         img = _to_rgb(img)
@@ -359,7 +364,7 @@ def photo_rotate(request, pk: int):
     except Exception:
         logger.exception("%s %s", request.method, request.path)
         db.rollback()
-        return _error("サーバーエラーが発生しました", 500)
+        return _error(msg.ERR_SERVER, 500)
     finally:
         db.close()
 
@@ -374,7 +379,7 @@ def photo_reorder(request):
         except ValidationError as e:
             details = {str(err["loc"][-1]): err["msg"] for err in e.errors()}
             logger.warning("validation error: PUT %s body=%r details=%s", request.path, request.body[:500], details)
-            return _error("photo_ids が不正です", details=details)
+            return _error(msg.ERR_PHOTO_IDS_INVALID, details=details)
 
         for i, photo_id in enumerate(data.photo_ids):
             db.query(Photo).filter(
@@ -386,7 +391,7 @@ def photo_reorder(request):
     except Exception:
         logger.exception("%s %s", request.method, request.path)
         db.rollback()
-        return _error("サーバーエラーが発生しました", 500)
+        return _error(msg.ERR_SERVER, 500)
     finally:
         db.close()
 
@@ -414,7 +419,7 @@ def master_list(request):
         except ValidationError as e:
             details = {str(err["loc"][-1]): err["msg"] for err in e.errors()}
             logger.warning("validation error: POST %s body=%r details=%s", request.path, request.body[:500], details)
-            return _error("入力値が不正です", details=details)
+            return _error(msg.ERR_INVALID_INPUT, details=details)
         master = Master(**data.model_dump())
         db.add(master)
         db.commit()
@@ -423,7 +428,7 @@ def master_list(request):
     except Exception:
         logger.exception("%s %s", request.method, request.path)
         db.rollback()
-        return _error("サーバーエラーが発生しました", 500)
+        return _error(msg.ERR_SERVER, 500)
     finally:
         db.close()
 
@@ -435,14 +440,14 @@ def master_detail(request, pk: int):
     try:
         master = db.query(Master).filter(Master.id == pk, Master.deleted_at.is_(None)).first()
         if not master:
-            return _error("マスタが見つかりません", 404)
+            return _error(msg.ERR_MASTER_NOT_FOUND, 404)
         master.deleted_at = datetime.utcnow()
         db.commit()
         return JsonResponse({"ok": True})
     except Exception:
         logger.exception("%s %s", request.method, request.path)
         db.rollback()
-        return _error("サーバーエラーが発生しました", 500)
+        return _error(msg.ERR_SERVER, 500)
     finally:
         db.close()
 
@@ -454,11 +459,11 @@ def admin_verify(request):
         data = AdminVerify.model_validate_json(request.body)
     except ValidationError as e:
         logger.warning("validation error: POST %s err=%s", request.path, e)
-        return _error("パスワードが不正です")
+        return _error(msg.ERR_ADMIN_PASSWORD_WRONG)
 
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
     if not admin_password:
-        return _error("管理者パスワードが設定されていません", 500)
+        return _error(msg.ERR_ADMIN_PASSWORD_NOT_SET, 500)
 
     if data.password == admin_password:
         return JsonResponse({"ok": True})
@@ -475,7 +480,7 @@ def restaurant_stats(request):
         VALID_X = {"genre", "scene", "stars", "visit_year", "visit_month", "prefecture"}
         VALID_Y = {"count", "rating_avg", "rating_sum"}
         if x_axis not in VALID_X or y_axis not in VALID_Y:
-            return _error("パラメータが不正です")
+            return _error(msg.ERR_INVALID_PARAMS)
 
         restaurants = db.query(Restaurant).filter(Restaurant.deleted_at.is_(None)).all()
 
@@ -507,7 +512,7 @@ def restaurant_stats(request):
         data = []
         for label, values in groups.items():
             if y_axis == "count":
-                val: float = float(len(values))
+                val = float(len(values))
             elif y_axis == "rating_avg":
                 val = round(sum(values) / len(values), 2) if values else 0.0
             else:  # rating_sum
@@ -524,7 +529,7 @@ def restaurant_stats(request):
         return JsonResponse({"x_axis": x_axis, "y_axis": y_axis, "data": data})
     except Exception:
         logger.exception("%s %s", request.method, request.path)
-        return _error("サーバーエラーが発生しました", 500)
+        return _error(msg.ERR_SERVER, 500)
     finally:
         db.close()
 
@@ -538,7 +543,11 @@ def _brave_search(query: str, api_key: str) -> str:
     url = f"https://api.search.brave.com/res/v1/web/search?{params}"
     req = urllib.request.Request(
         url,
-        headers={"Accept": "application/json", "X-Subscription-Token": api_key},
+        headers={
+            "Accept": "application/json",
+            "Accept-Encoding": "identity",
+            "X-Subscription-Token": api_key,
+        },
     )
     with urllib.request.urlopen(req, timeout=10) as resp:
         data = json.loads(resp.read().decode("utf-8"))
@@ -588,25 +597,30 @@ def restaurant_autofill(request):
     try:
         body = json.loads(request.body)
     except json.JSONDecodeError:
-        return _error("リクエストが不正です")
+        return _error(msg.ERR_INVALID_REQUEST)
 
     name = (body.get("name") or "").strip()
     nearest_station = (body.get("nearest_station") or "").strip()
     if not name:
-        return _error("店名は必須です")
+        return _error(msg.ERR_RESTAURANT_NAME_REQUIRED)
 
     brave_key = os.environ.get("BRAVE_API_KEY", "")
     gemini_key = os.environ.get("GEMINI_API_KEY", "")
     if not brave_key:
-        return _error("BRAVE_API_KEY が設定されていません", 500)
+        return _error(msg.ERR_AUTOFILL_BRAVE_KEY_NOT_SET, 500)
     if not gemini_key:
-        return _error("GEMINI_API_KEY が設定されていません", 500)
+        return _error(msg.ERR_AUTOFILL_GEMINI_KEY_NOT_SET, 500)
 
     try:
         query = " ".join(filter(None, [name, nearest_station, "住所", "電話番号", "営業時間", "定休日"]))
         search_text = _brave_search(query, brave_key)
         info = _extract_store_info(search_text, name, gemini_key)
         return JsonResponse(info)
-    except Exception:
+    except Exception as e:
         logger.exception("autofill name=%s", name)
-        return _error("自動補完に失敗しました", 500)
+        err = str(e)
+        if "429" in err or "quota" in err.lower() or "rate" in err.lower():
+            if "day" in err.lower():
+                return _error(msg.ERR_AUTOFILL_DAILY_QUOTA, 503)
+            return _error(msg.ERR_AUTOFILL_RATE_LIMIT, 503)
+        return _error(msg.ERR_AUTOFILL_FAILED, 500)

@@ -37,9 +37,9 @@ export async function deleteRestaurant(id: number): Promise<void> {
 
 export async function autofillRestaurant(
   name: string,
-  nearest_station: string
+  nearestStation: string
 ): Promise<AutofillResult> {
-  const { data } = await client.post<AutofillResult>("/restaurants/autofill/", { name, nearest_station });
+  const { data } = await client.post<AutofillResult>("/restaurants/autofill/", { name, nearest_station: nearestStation });
   return data;
 }
 

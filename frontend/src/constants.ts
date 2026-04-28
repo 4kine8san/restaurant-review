@@ -3,6 +3,7 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 export const SCENES = ["朝", "昼", "夜", "持ち帰り", "その他"] as const;
 export type Scene = (typeof SCENES)[number];
 
+// 5.0 から 1.0 まで 0.1 刻み → 41 = (5.0 - 1.0) / 0.1 + 1
 export const RATING_OPTIONS = Array.from({ length: 41 }, (_, i) =>
   Math.round((5.0 - i * 0.1) * 10) / 10
 );

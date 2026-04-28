@@ -1,4 +1,4 @@
-# ADR-001: レストランレビュー管理システムの構築
+﻿# ADR-001: レストランレビュー管理システムの構築
 
 ## ステータス
 
@@ -141,10 +141,28 @@
 | 16 | セキュリティ | Pydantic の入力スキーマには `max_length`・`ge`/`le` 等のフィールド制約を付与し、過大な入力値を境界で弾く |
 | 17 | バグ予防 | すべての `<button>` 要素には必ず `type` 属性を明示する。省略するとデフォルトの `type="submit"` として扱われ、フォーム内外を問わず意図しないフォーム送信が発生する。フォーム送信ボタンは `type="submit"`、それ以外はすべて `type="button"` を付与する |
 | 18 | UX | ポップアップ・ドロップダウン等の浮動要素は `ReactDOM.createPortal` で `document.body` 直下に描画し、親要素の `overflow` や stacking context による表示崩れを防ぐ |
+| 19 | 可読性 | 同じ変換式が3回以上出現する場合は名前付きヘルパー関数に抽出する。繰り返しが消えることで各行の意図が一目で伝わる（例: `float(v) if v is not None else None` → `_maybe_float(v)`） |
+| 20 | 可読性 | 変数名は値の実態を正確に表す。`count()` の戻り値を格納しているのに `max_order` と命名するなど、処理内容と名前が乖離しないようにする |
+| 21 | 可読性 | 同じ式を2回以上呼び出す場合は変数に格納して再利用する（例: `model_dump(exclude_unset=True)` の二重呼び出し）。パフォーマンスの無駄を防ぐとともに、ロジックの変更が一箇所で済む |
+| 22 | 可読性 | 条件式に到達不能なコードを含めない。`"day" in err.lower()` と `"Day" in err` のように一方が他方を完全に包含する場合、後者はデッドコードとなり読者を混乱させる |
+| 23 | 可読性 | TypeScript の関数引数は camelCase で命名し、API リクエスト送信時にスネークケースのキーへマッピングする。言語の命名規約（camelCase）と外部 API の仕様（snake_case）を関数シグネチャ上で混在させない |
+| 24 | 可読性 | マジックナンバーには導出ロジックを説明するコメントを付与する（例: `length: 41` → `// 5.0 から 1.0 まで 0.1 刻み → 41 = (5.0 - 1.0) / 0.1 + 1`） |
 
 ---
 
 ## 更新履歴
+### 2026-04-28
+
+| # | 区分 | 内容 |
+| --- | --- | --- |
+| 1 | 品質改善 | `_serialize_restaurant` の評価フィールド6箇所に繰り返しだった `float(v) if v else None` を `_maybe_float()` ヘルパーに抽出。レビュー観点 #19 の適用（The Art of Readable Code Ch.13） |
+| 2 | 品質改善 | `restaurant_detail` PUT 処理で `model_dump(exclude_unset=True)` を2回呼び出していた箇所を変数 `updates` に格納して再利用。レビュー観点 #21 の適用 |
+| 3 | 品質改善 | `photo_upload` の変数名 `max_order` を `next_sort_order` に改名。`count()` の結果であり「最大値」ではないため実態に合わせた。レビュー観点 #20 の適用 |
+| 4 | 品質改善 | `restaurant_autofill` の 429 判定条件 `"day" in err.lower() or "Day" in err` から後者（デッドコード）を除去。レビュー観点 #22 の適用 |
+| 5 | 品質改善 | `restaurant_stats` のローカル変数 `val: float =` の不要な型注釈を削除 |
+| 6 | 品質改善 | `autofillRestaurant` 関数の引数名を `nearest_station` から `nearestStation` に変更し、TypeScript の camelCase 規約に統一。API リクエスト body へのマッピングは関数内部で維持。レビュー観点 #23 の適用 |
+| 7 | 品質改善 | `RATING_OPTIONS` のマジックナンバー `41` に導出式を説明するコメントを付与。レビュー観点 #24 の適用 |
+| 8 | ADR 更新 | コードレビュー観点 #19〜#24 を追加（可読性カテゴリ、The Art of Readable Code 準拠） |
 
 ### 2026-04-27
 
