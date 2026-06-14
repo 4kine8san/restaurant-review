@@ -1,4 +1,5 @@
 import client from "./client";
+import { API_BASE_URL } from "../constants";
 
 export async function uploadPhoto(
   restaurantId: number,
@@ -26,9 +27,9 @@ export async function deletePhoto(id: number): Promise<void> {
 }
 
 export function photoUrl(id: number): string {
-  return `/api/photos/${id}/`;
+  return `${API_BASE_URL}/photos/${id}/`;
 }
 
 export function thumbUrl(id: number): string {
-  return `/api/photos/${id}/thumb/`;
+  return `${API_BASE_URL}/photos/${id}/thumb/`;
 }

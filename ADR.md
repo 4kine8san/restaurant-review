@@ -147,10 +147,19 @@
 | 22 | 可読性 | 条件式に到達不能なコードを含めない。`"day" in err.lower()` と `"Day" in err` のように一方が他方を完全に包含する場合、後者はデッドコードとなり読者を混乱させる |
 | 23 | 可読性 | TypeScript の関数引数は camelCase で命名し、API リクエスト送信時にスネークケースのキーへマッピングする。言語の命名規約（camelCase）と外部 API の仕様（snake_case）を関数シグネチャ上で混在させない |
 | 24 | 可読性 | マジックナンバーには導出ロジックを説明するコメントを付与する（例: `length: 41` → `// 5.0 から 1.0 まで 0.1 刻み → 41 = (5.0 - 1.0) / 0.1 + 1`） |
+| 25 | 正確性 | `tsc` を含むビルドコマンド（`npm run build` = `tsc && vite build`）が通る状態を維持する。dev サーバー（esbuild）は型を検査しないため型エラーを見逃す。`import.meta.env` を使う場合は `src/vite-env.d.ts`（`/// <reference types="vite/client" />`）を配置する |
 
 ---
 
 ## 更新履歴
+### 2026-06-14
+
+| # | 区分 | 内容 |
+| --- | --- | --- |
+| 1 | 品質改善 | `api/photos.ts` の `photoUrl`/`thumbUrl`、`api/restaurants.ts` の `exportUrl` でハードコードされていた `/api` プレフィックスを `constants.ts` の `API_BASE_URL` 経由に変更。`VITE_API_BASE_URL` 設定時にサムネイル表示・エクスポートリンクが壊れる問題を解消。レビュー観点 #6 の適用漏れを修正 |
+| 2 | 品質改善 | `ListPage` の総ページ数計算でハードコードされていたマジックナンバー `50` を、API レスポンスの `per_page` 値（`perPage` state）から取得するよう変更。バックエンドのページサイズとの重複を解消。レビュー観点 #24 / DRY の適用 |
+| 3 | バグ修正 | `frontend/src/vite-env.d.ts`（`vite/client` 型参照）の欠落により `import.meta.env` が型エラーとなり `npm run build`（`tsc`）が失敗していた問題を修正 |
+
 ### 2026-04-28
 
 | # | 区分 | 内容 |
@@ -187,3 +196,5 @@
 ---
 
 ## 参考
+・リーダブルコード（The Art of Readable Code）
+・良いコードを書く技術』

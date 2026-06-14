@@ -1,4 +1,5 @@
 import client from "./client";
+import { API_BASE_URL } from "../constants";
 import type { Restaurant, RestaurantListResponse, RestaurantFormData, AutofillResult } from "../types";
 
 export interface ListParams {
@@ -48,5 +49,5 @@ export function exportUrl(params: ListParams, format: "csv" | "json"): string {
   if (params.keyword) q.set("keyword", params.keyword);
   if (params.genre_id != null) q.set("genre_id", String(params.genre_id));
   q.set("format", format);
-  return `/api/restaurants/export/?${q.toString()}`;
+  return `${API_BASE_URL}/restaurants/export/?${q.toString()}`;
 }

@@ -20,6 +20,7 @@ export default function ListPage({ isAdmin, onLogout, onLogin }: Props) {
   const { state, update } = useListState();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [total, setTotal] = useState(0);
+  const [perPage, setPerPage] = useState(50);
   const [genres, setGenres] = useState<Master[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,6 +34,7 @@ export default function ListPage({ isAdmin, onLogout, onLogin }: Props) {
       const result = await listRestaurants(state.params);
       setRestaurants(result.items);
       setTotal(result.total);
+      setPerPage(result.per_page);
       if (result.page !== (state.params.page ?? 1)) {
         update({ params: { ...state.params, page: result.page } });
       }
@@ -67,7 +69,7 @@ export default function ListPage({ isAdmin, onLogout, onLogin }: Props) {
     }
   };
 
-  const totalPages = Math.ceil(total / 50);
+  const totalPages = Math.ceil(total / perPage);
 
   const displayModeLabels: Record<DisplayMode, string> = {
     large: "大",
