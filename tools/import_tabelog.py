@@ -11,18 +11,22 @@
     （tabelog_reviews.csv と photos/ フォルダを含むこと）
 
 実行方法:
-  python tools/import_tabelog.py <export_dir> [--dry-run] [--skip-photos]
+  python tools/import_tabelog.py <export_dir> [--dry-run] [--skip-photos] [--skip-existing]
 
 引数:
   export_dir      エクスポートデータのフォルダパス（絶対・相対どちらも可）
 
 オプション:
-  --dry-run       DBへの書き込みを行わず、インポート内容のみ確認する
-  --skip-photos   写真のアップロードをスキップする
+  --dry-run        DBへの書き込みを行わず、インポート内容のみ確認する
+  --skip-photos    写真のアップロードをスキップする
+  --skip-existing  既存（同一店舗ID）のレストランは更新せずスキップする。
+                   未インポートの新規レビューのみを登録したい場合に使う。
+                   アプリ上で手入力した利用シーン・備考などの上書きを防げる
 
 例:
   python tools/import_tabelog.py ../export-tabelog-review
   python tools/import_tabelog.py D:/VSCodeFolder/export-tabelog-review --dry-run
+  python tools/import_tabelog.py ../export-tabelog-review --skip-existing
 """
 
 import csv
@@ -306,6 +310,7 @@ def main() -> None:
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     dry_run = "--dry-run" in sys.argv
     skip_photos = "--skip-photos" in sys.argv
+    skip_existing = "--skip-existing" in sys.argv
 
     if not args:
         log("使い方: python tools/import_tabelog.py <export_dir> [--dry-run] [--skip-photos]")
@@ -321,6 +326,8 @@ def main() -> None:
     log(f"API 接続先: {API_BASE}")
     if dry_run:
         log("【DRY RUN モード】DBへの書き込みは行いません\n")
+    if skip_existing:
+        log("【--skip-existing】既存（同一店舗ID）のレストランは更新せずスキップします\n")
 
     # CSV 読み込み
     with open(csv_path, encoding="utf-8-sig", newline="") as f:
@@ -352,6 +359,7 @@ def main() -> None:
 
     created = 0
     updated = 0
+    skipped = 0
     photo_total = 0
     dry_count = 0
     errors: list[tuple[str, str]] = []
@@ -364,7 +372,10 @@ def main() -> None:
 
             if dry_run:
                 existing_id = existing_tabelog_id_to_id.get(review["tabelog_id"])
-                action = f"UPDATE(id={existing_id})" if existing_id else "CREATE"
+                if existing_id:
+                    action = f"SKIP(id={existing_id})" if skip_existing else f"UPDATE(id={existing_id})"
+                else:
+                    action = "CREATE"
                 log(
                     f"[{i:3d}/{len(rows)}] [{action}] {name} "
                     f"| 訪問:{review['visit_date']} "
@@ -377,7 +388,11 @@ def main() -> None:
 
             existing_id = existing_tabelog_id_to_id.get(review["tabelog_id"])
 
-            if existing_id:
+            if existing_id and skip_existing:
+                # 既存レコードは更新せずスキップ（手入力データの上書きを防ぐ）
+                log(f"[{i:3d}/{len(rows)}] SKIP {name} (id={existing_id})")
+                skipped += 1
+            elif existing_id:
                 # 既存レコードを更新（写真・星はスキップ）
                 update_payload = {k: v for k, v in payload.items() if k != "stars"}
                 update_restaurant(existing_id, update_payload)
@@ -413,7 +428,11 @@ def main() -> None:
     if dry_run:
         log(f"DRY RUN 終了: {dry_count} 行を表示しました（データベースは変更されていません）")
     else:
-        log(f"完了: 新規 {created}件 / 更新 {updated}件 / エラー {len(errors)}件")
+        summary = f"完了: 新規 {created}件 / 更新 {updated}件"
+        if skip_existing:
+            summary += f" / スキップ {skipped}件"
+        summary += f" / エラー {len(errors)}件"
+        log(summary)
         if created == 0 and updated == 0 and not errors:
             log("警告: 作成・更新が0件です。CSV が空、またはすべてスキップされた可能性があります。")
         elif created + updated > 0:
