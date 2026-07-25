@@ -16,9 +16,14 @@ interface Props {
   onChange: (photos: PhotoMeta[]) => void;
 }
 
+// サーバー側で回転した画像をブラウザキャッシュ越しに再取得させるための
+// キャッシュバスター。回転量が画像内容と 1:1 対応するので rotation を使う。
+const versioned = (url: string, rotation: number) =>
+  rotation ? `${url}?v=${rotation}` : url;
+
 export default function PhotoManager({ restaurantId, photos, onChange }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [preview, setPreview] = useState<number | null>(null);
+  const [preview, setPreview] = useState<PhotoMeta | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState("");
@@ -217,10 +222,10 @@ export default function PhotoManager({ restaurantId, photos, onChange }: Props) 
               ].filter(Boolean).join(" ")}
             >
               <img
-                src={thumbUrl(photo.id)}
+                src={versioned(thumbUrl(photo.id), photo.rotation)}
                 alt={`写真${i + 1}`}
                 className="w-full aspect-square object-cover"
-                onClick={() => !isSortingRef.current && setPreview(photo.id)}
+                onClick={() => !isSortingRef.current && setPreview(photo)}
                 draggable={false}
               />
               {i === 0 && (
@@ -274,7 +279,7 @@ export default function PhotoManager({ restaurantId, photos, onChange }: Props) 
             onClick={() => setPreview(null)}
           >
             <img
-              src={photoUrl(preview)}
+              src={versioned(photoUrl(preview.id), preview.rotation)}
               alt="原寸表示"
               className="max-h-[90vh] max-w-[90vw] object-contain"
               onClick={(e) => e.stopPropagation()}

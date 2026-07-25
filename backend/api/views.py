@@ -4,6 +4,7 @@ import csv
 import json
 import logging
 import re
+import secrets
 import urllib.request
 import urllib.parse
 from datetime import datetime
@@ -60,7 +61,7 @@ def _apply_filters(query, params):
             Restaurant.visit_date.ilike(f"%{keyword}%")
         )
     genre_id = params.get("genre_id")
-    if genre_id:
+    if genre_id and str(genre_id).isdigit():
         query = query.filter(Restaurant.genre_id == int(genre_id))
     return query
 
@@ -261,8 +262,15 @@ def photo_upload(request):
     db = _get_db()
     try:
         restaurant_id = request.POST.get("restaurant_id")
-        if not restaurant_id:
+        if not restaurant_id or not str(restaurant_id).isdigit():
             return _error(msg.ERR_PHOTO_RESTAURANT_ID)
+        restaurant_id = int(restaurant_id)
+
+        restaurant = db.query(Restaurant).filter(
+            Restaurant.id == restaurant_id, Restaurant.deleted_at.is_(None)
+        ).first()
+        if not restaurant:
+            return _error(msg.ERR_RESTAURANT_NOT_FOUND, 404)
 
         file = request.FILES.get("photo")
         if not file:
@@ -279,12 +287,12 @@ def photo_upload(request):
         thumbnail_bytes = _make_thumbnail(image_bytes)
 
         next_sort_order = db.query(Photo).filter(
-            Photo.restaurant_id == int(restaurant_id),
+            Photo.restaurant_id == restaurant_id,
             Photo.deleted_at.is_(None),
         ).count()
 
         photo_obj = Photo(
-            restaurant_id=int(restaurant_id),
+            restaurant_id=restaurant_id,
             image_data=image_bytes,
             thumbnail_data=thumbnail_bytes,
             sort_order=next_sort_order,
@@ -465,7 +473,8 @@ def admin_verify(request):
     if not admin_password:
         return _error(msg.ERR_ADMIN_PASSWORD_NOT_SET, 500)
 
-    if data.password == admin_password:
+    # タイミング攻撃を避けるため定数時間比較を使う
+    if secrets.compare_digest(data.password, admin_password):
         return JsonResponse({"ok": True})
     return JsonResponse({"ok": False, "error": "パスワードが違います"}, status=401)
 
